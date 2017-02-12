@@ -1,0 +1,40 @@
+---
+title: "First recommendation system"
+author: "Chirag Vithalani"
+date: "February 9, 2017"
+output: html_document
+---
+
+Copied Rating from http://files.grouplens.org/datasets/movielens/ml-latest-small.zip
+
+
+```{r}
+
+movies<-read.csv(file="https://raw.githubusercontent.com/chirag-vithlani/Recomendar_System/master/Project_1/data/movies.csv",header=TRUE,sep=",");
+ratings<-read.csv(file="https://raw.githubusercontent.com/chirag-vithlani/Recomendar_System/master/Project_1/data/ratings.csv",header=TRUE,sep=",")
+movieRatings<-merge(movies,ratings, by = "movieId")
+
+#newdata<-subset(newdata,userId==1 |userId==2|userId==3)
+newdata <- movieRatings[order(movieRatings$userId),] 
+
+#df2 <- subset(newdata, select = c(1, 4, 5))
+
+newdata<-subset(newdata,movieId==296 |movieId==318|movieId==356)
+#newdata<-subset(newdata,userId==1 |userId==2|userId==3)
+#pqr<-subset(newdata,userId==13 |userId==4|userId==21)
+pqr<-subset(newdata,userId==501 |userId==505|userId==3)
+pqr<-pqr[,c(1, 4, 5)]
+pqr
+#newdata[order(newdata$movieId),] 
+
+
+
+```
+
+
+
+```{r, echo=FALSE}
+
+```
+
+
