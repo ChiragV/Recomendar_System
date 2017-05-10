@@ -1,0 +1,231 @@
+---
+title: "Collaborative filtering recommender (CFR) System"
+author: "Chirag Vithalani"
+date: "May 9, 2017"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<hr />
+
+## Collaborative Filtering 
+
+
+### Definition
+
+Collaborative filtering is a method of making automatic predictions (filtering) about the interests of a user by collecting preferences or taste information from many users.
+
+![Collaborative filtering, source : wikipedia ](https://upload.wikimedia.org/wikipedia/commons/5/52/Collaborative_filtering.gif)
+
+
+
+```{r warning=FALSE,message=FALSE, echo=FALSE}
+library(recommenderlab)
+library(ggplot2)
+library(data.table)
+library(reshape2)
+```
+
+### Data Input
+
+MovieLens Latest Datasets is available at https://grouplens.org/datasets/movielens/latest/
+
+File Name : ml-latest-small.zip
+File Direct download URL : http://files.grouplens.org/datasets/movielens/ml-latest-small.zip
+
+Download above zip file,unzip and read movies.csv and ratings.csv files
+
+
+```{r data_load, warning=FALSE, error=FALSE}
+
+#reading files
+movies <- read.csv("movies.csv",stringsAsFactors=FALSE)
+
+ratings <- read.csv("ratings.csv")
+
+```
+
+Printing first three rows of movies object
+
+```{r warning=FALSE}
+head(movies,3)
+```
+
+Printing first three rows ratings object
+
+```{r  warning=FALSE}
+
+head(ratings,3)
+
+```
+
+## Data Processing 
+
+
+Re-organize the information of movie categories so that it is easy to organize it.
+
+### Extract a list of categories
+
+
+
+```{r warning=FALSE}
+
+genres <- as.data.frame(movies$genres, stringsAsFactors=FALSE)
+#strsplit and transpose the resulting list efficiently
+categoryDF <- as.data.frame(tstrsplit(genres[,1], '[|]', type.convert=TRUE),stringsAsFactors=FALSE)
+
+colnames(categoryDF) <- c(1:10)
+#  19 different categories in total
+category_list <- c("Action", "Adventure", "Animation", "Children","Comedy", "Crime","Documentary", "Drama", "Fantasy","Film-Noir", "Horror", "Musical", "Mystery","Romance","Sci-Fi", "Thriller", "War", "Western","IMAX") 
+
+category_matrix <- matrix(0,10330,19) 
+category_matrix[1,] <- category_list 
+colnames(category_matrix) <- category_list 
+
+#Loop through all elements
+for (i in 1:nrow(categoryDF)) 
+{
+  for (c in 1:ncol(categoryDF)) 
+  {
+    which_col = which(category_matrix[1,] == categoryDF[i,c])
+    category_matrix[i+1,which_col] <- 1
+  }
+}
+
+#convert into dataframe
+
+#remove category which is first row
+category_matrix2 <- as.data.frame(category_matrix[-1,], stringsAsFactors=FALSE) 
+
+for (c in 1:ncol(category_matrix2)) 
+{
+  category_matrix2[,c] <- as.integer(category_matrix2[,c])  #convert from characters to integers
+} 
+
+#head(category_matrix2)
+
+search_matrix <- cbind(movies[,1:2], category_matrix2)
+head(search_matrix,1)
+
+```
+### Coerce into a realRatingMAtrix
+
+Using realRatingMatrix
+
+```{r warning=FALSE,error=FALSE,message=FALSE}
+
+#Create ratings matrix. Rows = userId, Columns = movieId
+ratingmat <- dcast(ratings, userId~movieId, value.var = "rating", na.rm=FALSE)
+ratingmat <- as.matrix(ratingmat[,-1]) 
+
+## coerce into a realRatingMAtrix
+ratingmat <- as(ratingmat, "realRatingMatrix")
+
+```
+
+## Rating distribution
+
+```{r}
+
+vector_ratings <- as.vector(ratingmat@data)
+vector_ratings <- vector_ratings[vector_ratings != 0] # rating == 0 are NA values
+vector_ratings <- factor(vector_ratings)
+
+qplot(vector_ratings) + ggtitle("Distribution of the ratings")
+
+```
+
+Looks like most people are giving higher rating.
+
+
+## Trimming to meaningful data
+
+In order to select the most relevant data, I define the minimum number of users per rated movie as 50 and the minimum views number per movie as 50:
+
+```{r rel_data, warning=FALSE, error=FALSE}
+
+trimmed_movies <- ratingmat[rowCounts(ratingmat) > 50,colCounts(ratingmat) > 50]
+trimmed_movies
+
+```
+
+Such a selection of the most relevant data contains 420 users and 447 movies, compared to previous 668 users and 10325 movies in the total dataset.
+
+Using the same approach as previously, I visualize the top 2 percent of users and movies in the new matrix of the most relevant data:
+
+## ITEM-based Collaborative Filtering Model
+
+Item-item collaborative filtering is a form of collaborative filtering for recommender systems based on the similarity between items calculated using people's ratings of those items.
+
+## Defining training/test sets
+
+I build the model using 80% of the whole dataset as a training set, and 20% - as a test set. 
+
+```{r warning=FALSE, message=FALSE}
+
+# Random Samples and Permutations
+sample <- sample(x = c(TRUE, FALSE), size = nrow(trimmed_movies),replace = TRUE, prob = c(0.8, 0.2))
+
+head(sample)
+
+train_data <- trimmed_movies[sample, ]
+test_data <- trimmed_movies[!sample, ]
+
+head(test_data)
+
+```
+
+## Building the recommendation model
+
+
+```{r warning=FALSE, message=FALSE}
+
+#Recommender uses the registry mechanism from package registry to manage methods. This let's the user easily specify and add new methods. The registry is called recommenderRegistry.
+recommender_models <- recommenderRegistry$get_entries(dataType ="realRatingMatrix")
+
+recommender_models$IBCF_realRatingMatrix$parameters
+
+#Create a Recommender Model
+IBCF_recommender_model <- Recommender(data = train_data,method = "IBCF",parameter = list(k = 30))
+
+
+```
+## Doing recommendation on actual data
+
+### Do the prediction
+
+```{r apply_IBCF, warning=FALSE, message=FALSE}
+
+recc_predicted <- predict(object = IBCF_recommender_model,newdata = test_data, n = 10)
+recc_predicted
+
+```
+
+### Printing recommendation
+
+```{r warning=FALSE, message=FALSE}
+
+first_user_recommendation <- recc_predicted@items[[1]] 
+first_user_recommendation
+
+movies_IDs <- recc_predicted@itemLabels[first_user_recommendation]
+movies_IDs
+movie_names <- movies_IDs
+
+for (i in 1:10)
+{
+  movie_names[i] <- as.character(subset(movies,movies$movieId == movies_IDs[i])$title)
+}
+movie_names
+```
+
+IBCF recommends items on the basis of the similarity matrix. It's an eager-learning model, that is, once it's built, it doesn't need to access the initial data. For each item, the model stores the k-most similar, so the amount of information is small once the model is built. This is an advantage in the presence of lots of data.
+
+In addition, this algorithm is efficient and scalable, so it works well with big rating matrices.
+
+
+## Conslusions 
+
+In this project, I have developed and evaluated a collaborative filtering recommender (CFR) -Item Based- system for recommending movies.
